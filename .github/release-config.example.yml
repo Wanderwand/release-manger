@@ -1,0 +1,230 @@
+# Release Configuration Template
+# 
+# Copy this file to your project's .github/release-config.yml and customize
+# for your specific needs.
+
+version: 1
+
+# Project type determines release strategy
+# Options:
+#   - npm-package: Publish to npm registry
+#   - docker-image: Push Docker image to registry
+#   - chrome-extension: Release to Chrome Web Store
+#   - github-release: Create GitHub Release with artifacts
+#   - static-site: Deploy static website
+#   - binary: Release compiled binaries
+projectType: npm-package
+
+# Versioning configuration
+versioning:
+  # Strategy: semantic (semver) or calendar (YYYY.MM.DD)
+  strategy: semantic
+  
+  # Files to update with new version
+  versionFiles:
+    - package.json
+    - package-lock.json
+    # - src/version.ts  # Example: custom version file
+
+# Changelog configuration
+changelog:
+  enabled: true
+  # Style: conventional-commits or manual
+  style: conventional-commits
+  # Output file
+  file: CHANGELOG.md
+  # Include unreleased section
+  includeUnreleased: true
+  # Optional: section mappings
+  sections:
+    Features: ["feat"]
+    Fixes: ["fix", "perf"]
+    Breaking: ["BREAKING CHANGE"]
+    Documentation: ["docs"]
+    Other: ["chore", "refactor", "style", "test"]
+
+# Git configuration
+git:
+  # User for commits
+  user:
+    name: "github-actions[bot]"
+    email: "github-actions[bot]@users.noreply.github.com"
+  
+  # Branch to release from
+  releaseBranch: main
+  
+  # Tag format: {version} or {package}@{version} (monorepo)
+  tagFormat: "v{version}"
+
+# Monorepo configuration (optional)
+monorepo:
+  # Set to true if this is a monorepo
+  enabled: false
+  
+  # Type: workspace (npm/yarn) or package (lerna)
+  type: workspace
+  
+  # Packages/workspaces to manage
+  workspaces:
+    # - packages/cli
+    # - packages/sdk
+    # - packages/ui
+
+# Release requirements
+release:
+  # Require PR checks to pass
+  requireChecks: true
+  
+  # Require approval before release
+  requireApproval: false
+  
+  # Allow releasing from non-main branches
+  allowBranchesOther: false
+
+# Pre-release configuration
+prerelease:
+  # Pre-release version suffix (alpha, beta, rc, etc.)
+  suffix: rc
+  
+  # Auto-increment pre-release patch
+  autoIncrement: true
+  
+  # Create pre-release GitHub Release
+  createGitHubRelease: true
+
+# Deployment configuration
+# Each deployment has specific configuration for the release type
+deployments:
+  # NPM Package Publishing
+  - name: npm
+    enabled: false
+    description: "Publish to npm registry"
+    type: npm-package
+    registry: "https://registry.npmjs.org"
+    # Scope packages (e.g., @myorg/package-name)
+    scope: ""
+    # Publish as public or restricted
+    access: public
+    # Pre-release handling
+    prereleaseTags:
+      - alpha
+      - beta
+      - rc
+    
+  # Docker Image Push
+  - name: docker
+    enabled: false
+    description: "Push Docker image to registry"
+    type: docker-image
+    registry: "ghcr.io"
+    # Image name template: {repo} for repository name, {version} for version
+    imageName: "{repo}"
+    # Additional tags beyond version and latest
+    tags:
+      - latest
+      - "v{major}"
+      - "v{major}.{minor}"
+    # Build options
+    build:
+      context: "."
+      dockerfile: "Dockerfile"
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    
+  # Chrome Web Store
+  - name: chrome-extension
+    enabled: false
+    description: "Release to Chrome Web Store"
+    type: chrome-extension
+    # Requires Chrome Web Store API credentials
+    clientId: ""
+    clientSecret: ""
+    # Extension ID in Chrome Web Store
+    extensionId: ""
+    # Rollout percentage (100 for full, less for staged)
+    rolloutPercent: 100
+    
+  # GitHub Release
+  - name: github-release
+    enabled: true
+    description: "Create GitHub Release"
+    type: github-release
+    # Upload artifacts from dist/ or build/
+    artifacts:
+      enabled: false
+      paths:
+        - "dist/**/*"
+        - "build/**/*"
+    # Generate checksums
+    checksums:
+      enabled: true
+      algorithm: sha256
+    # Draft release before publishing
+    draft: false
+    # Create pre-release for non-stable versions
+    prerelease: true
+    
+  # Static Site Deployment
+  - name: github-pages
+    enabled: false
+    description: "Deploy to GitHub Pages"
+    type: static-site
+    # Output directory
+    outputDir: "dist"
+    # Branch to deploy to
+    branch: "gh-pages"
+    
+  # Binary Release
+  - name: binary
+    enabled: false
+    description: "Release compiled binaries"
+    type: binary
+    # Build command to create binaries
+    buildCmd: "npm run build:binary"
+    # Output directory
+    outputDir: "dist/binary"
+    # Target platforms
+    platforms:
+      - linux-x64
+      - darwin-x64
+      - darwin-arm64
+      - win32-x64
+
+# Notifications
+notifications:
+  # Slack webhook for notifications
+  slack:
+    enabled: false
+    webhook: ""
+    channel: "#releases"
+    
+  # Email notifications
+  email:
+    enabled: false
+    recipients: []
+    
+  # GitHub Discussions
+  discussions:
+    enabled: false
+    category: "Releases"
+
+# Advanced options
+advanced:
+  # Allow dirty working directory
+  allowDirty: false
+  
+  # Commit only changed files
+  commitChangedFilesOnly: true
+  
+  # Sign commits with GPG
+  signCommits: false
+  
+  # Skip changelog generation
+  skipChangelog: false
+  
+  # Skip git operations (useful for testing)
+  skipGit: false
+  
+  # Verbose logging
+  verbose: true

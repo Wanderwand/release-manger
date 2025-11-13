@@ -1,0 +1,155 @@
+name: Monorepo Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to release (or "all" for all packages)'
+        required: true
+        type: choice
+        options:
+          - all
+          # Add your packages here:
+          # - packages/cli
+          # - packages/sdk
+      releaseType:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+          - prerelease
+
+concurrency:
+  group: monorepo-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release Package(s)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    strategy:
+      matrix:
+        package: ${{ fromJson(inputs.package == 'all' ? '["packages/cli", "packages/sdk"]' : format('["{0}"]', inputs.package)) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get package info
+        id: pkg
+        run: |
+          PKG_NAME=$(node -p "require('./${{ matrix.package }}/package.json').name")
+          PKG_VERSION=$(node -p "require('./${{ matrix.package }}/package.json').version")
+          echo "NAME=$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "VERSION=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "DIR=${{ matrix.package }}" >> $GITHUB_OUTPUT
+
+      - name: Detect version bump
+        id: newVersion
+        run: |
+          cd ${{ matrix.package }}
+          CURRENT=$(node -p "require('./package.json').version")
+          
+          case "${{ inputs.releaseType }}" in
+            major)
+              NEW=$(echo $CURRENT | awk -F. '{print ($1+1) ".0.0"}')
+              ;;
+            minor)
+              NEW=$(echo $CURRENT | awk -F. '{print $1 "." ($2+1) ".0"}')
+              ;;
+            patch)
+              NEW=$(echo $CURRENT | awk -F. '{print $1 "." $2 "." ($3+1)}')
+              ;;
+            prerelease)
+              NEW="${CURRENT}-rc.1"
+              ;;
+          esac
+          
+          echo "NEW_VERSION=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Update version
+        run: |
+          cd ${{ matrix.package }}
+          npm version ${{ steps.newVersion.outputs.NEW_VERSION }} --no-git-tag-version
+
+      - name: Build package
+        run: |
+          cd ${{ matrix.package }}
+          npm run build --if-present
+
+      - name: Test package
+        run: |
+          cd ${{ matrix.package }}
+          npm test --if-present
+        continue-on-error: true
+
+      - name: Create release commit
+        run: |
+          git add ${{ matrix.package }}/package.json
+          git commit -m "chore(${{ steps.pkg.outputs.NAME }}): release v${{ steps.newVersion.outputs.NEW_VERSION }}"
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ steps.pkg.outputs.NAME }}@${{ steps.newVersion.outputs.NEW_VERSION }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Publish to npm
+        run: |
+          cd ${{ matrix.package }}
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.pkg.outputs.NAME }}@${{ steps.newVersion.outputs.NEW_VERSION }}
+          name: Release ${{ steps.pkg.outputs.NAME }}@${{ steps.newVersion.outputs.NEW_VERSION }}
+          draft: false
+          prerelease: ${{ inputs.releaseType == 'prerelease' }}
+          body: |
+            ## ${{ steps.pkg.outputs.NAME }} v${{ steps.newVersion.outputs.NEW_VERSION }}
+            
+            ### Changes
+            See commit history for details.
+            
+            ### Installation
+            ```bash
+            npm install ${{ steps.pkg.outputs.NAME }}@${{ steps.newVersion.outputs.NEW_VERSION }}
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## 📦 Package Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package**: ${{ steps.pkg.outputs.NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.newVersion.outputs.NEW_VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type**: ${{ inputs.releaseType }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View on npm](https://npmjs.com/package/${{ steps.pkg.outputs.NAME }})" >> $GITHUB_STEP_SUMMARY

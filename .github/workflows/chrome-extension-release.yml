@@ -1,0 +1,97 @@
+name: Chrome Extension Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  chrome-release:
+    name: Release Chrome Extension
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build --if-present
+
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r -q ../chrome-extension-${{ steps.version.outputs.VERSION }}.zip .
+          cd ..
+
+      - name: Generate checksum
+        run: |
+          sha256sum chrome-extension-${{ steps.version.outputs.VERSION }}.zip > chrome-extension-${{ steps.version.outputs.VERSION }}.zip.sha256
+
+      - name: Upload to Chrome Web Store
+        run: |
+          # This requires the Chrome Web Store API setup
+          # For now, we'll create a GitHub release with the artifact
+          echo "Manual upload required to Chrome Web Store"
+          echo "File: chrome-extension-${{ steps.version.outputs.VERSION }}.zip"
+        if: ${{ secrets.CHROME_STORE_CLIENT_ID != '' }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            chrome-extension-${{ steps.version.outputs.VERSION }}.zip
+            chrome-extension-${{ steps.version.outputs.VERSION }}.zip.sha256
+          body: |
+            ## Chrome Extension v${{ steps.version.outputs.VERSION }}
+            
+            **Checksum (SHA256)**:
+            ```
+            $(cat chrome-extension-${{ steps.version.outputs.VERSION }}.zip.sha256)
+            ```
+            
+            ### Installation
+            
+            1. Download `chrome-extension-${{ steps.version.outputs.VERSION }}.zip`
+            2. Extract to a local folder
+            3. Go to `chrome://extensions/`
+            4. Enable "Developer mode"
+            5. Click "Load unpacked" and select the folder
+            
+            ### Release Notes
+            See CHANGELOG.md for details on this release.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "## 🎨 Chrome Extension Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Package**: chrome-extension-${{ steps.version.outputs.VERSION }}.zip" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download the extension package from the GitHub Release" >> $GITHUB_STEP_SUMMARY
+          echo "2. Upload to [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole/)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Verify extension works as expected" >> $GITHUB_STEP_SUMMARY

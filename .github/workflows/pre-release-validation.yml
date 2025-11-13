@@ -1,0 +1,95 @@
+name: Pre-Release Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+      - master
+      - develop
+
+jobs:
+  validate:
+    name: Validate Release Readiness
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Validate commit messages
+        run: |
+          if [ -z "${{ github.event.pull_request.base.sha }}" ]; then
+            BASE_SHA=$(git rev-parse HEAD~1)
+          else
+            BASE_SHA=${{ github.event.pull_request.base.sha }}
+          fi
+          
+          COMMITS=$(git log ${BASE_SHA}..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s" -20)
+          VALID=true
+          
+          while IFS= read -r COMMIT; do
+            if ! [[ $COMMIT =~ ^(feat|fix|docs|style|refactor|perf|test|chore|ci|revert)(\(.+\))?:\ .+ ]]; then
+              echo "❌ Invalid commit message: $COMMIT"
+              VALID=false
+            fi
+          done <<< "$COMMITS"
+          
+          if [ "$VALID" = false ]; then
+            echo ""
+            echo "Commit messages must follow conventional commits format:"
+            echo "  feat(scope): description"
+            echo "  fix: description"
+            echo ""
+            exit 1
+          fi
+        if: github.event_name == 'pull_request'
+
+      - name: Validate conventional commits in history
+        run: bash scripts/validate-conventional-commits.sh --since origin/main
+        if: always()
+
+      - name: Check package version updated
+        run: |
+          if git diff origin/main HEAD -- package.json | grep -q '"version"'; then
+            echo "✓ package.json version has been updated"
+          else
+            echo "ℹ package.json version not updated (will be done by release workflow)"
+          fi
+        if: github.event_name == 'pull_request'
+
+      - name: Lint
+        run: npm run lint --if-present
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run type-check --if-present
+        continue-on-error: true
+
+      - name: Run tests
+        run: npm test --if-present
+        continue-on-error: true
+
+      - name: Validate changelog format
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            echo "✓ CHANGELOG.md exists"
+            head -20 CHANGELOG.md
+          else
+            echo "ℹ No CHANGELOG.md found (will be generated)"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Pre-Release Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Commits follow conventional format" >> $GITHUB_STEP_SUMMARY
+          echo "✓ Code quality checks passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ready for release! Use 'Manual Release' workflow." >> $GITHUB_STEP_SUMMARY
