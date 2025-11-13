@@ -1,0 +1,53 @@
+{
+  "types": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "style",
+      "hidden": false
+    },
+    {
+      "type": "refactor",
+      "hidden": false
+    },
+    {
+      "type": "test",
+      "hidden": false
+    },
+    {
+      "type": "chore",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "hidden": true
+    }
+  ],
+  "commitUrlFormat": "https://github.com/{{repository}}/commit/{{hash}}",
+  "compareUrlFormat": "https://github.com/{{repository}}/compare/{{previousTag}}...{{currentTag}}",
+  "issueUrlFormat": "https://github.com/{{repository}}/issues/{{id}}",
+  "userUrlFormat": "https://github.com/{{user}}",
+  "releaseCommitMessageFormat": "chore(release): v{{currentTag}}",
+  "issuePrefixes": ["#"],
+  "preMajor": false,
+  "skip": {
+    "bump": false,
+    "changelog": false,
+    "commit": false,
+    "tag": false
+  }
+}

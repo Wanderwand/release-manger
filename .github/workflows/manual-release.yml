@@ -1,0 +1,104 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseType:
+        description: 'Release type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+          - prerelease
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Validate tests pass
+        run: npm run test --if-present
+
+      - name: Generate release
+        id: release
+        run: |
+          if [ "${{ inputs.releaseType }}" = "prerelease" ]; then
+            npm run release:pre || npm run release -- --prerelease rc
+          else
+            npm run release:${{ inputs.releaseType }} || npm run release -- --release-as ${{ inputs.releaseType }}
+          fi
+          
+          # Extract version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+        env:
+          NPM_CONFIG_NO_AUDIT: true
+
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Push changes and tags
+        run: git push origin main --follow-tags
+        if: ${{ success() }}
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        if: ${{ success() }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.release.outputs.TAG }}
+          name: Release ${{ steps.release.outputs.TAG }}
+          draft: false
+          prerelease: ${{ inputs.releaseType == 'prerelease' }}
+          body_path: ./CHANGELOG.md
+          files: |
+            dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ success() }}
+
+      - name: Summary
+        run: |
+          echo "## 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.release.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type**: ${{ inputs.releaseType }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag**: ${{ steps.release.outputs.TAG }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📦 [npm Package](https://npmjs.com/package/${{ github.event.repository.name }})" >> $GITHUB_STEP_SUMMARY
+          echo "🏷️ [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.release.outputs.TAG }})" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,67 @@
+name: Docker Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          REPO_NAME=${{ github.repository }}
+          IMAGE_NAME=${REPO_NAME,,}
+          
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "IMAGE_PATH=${{ env.REGISTRY }}/$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.IMAGE_PATH }}:${{ steps.meta.outputs.VERSION }}
+            ${{ steps.meta.outputs.IMAGE_PATH }}:latest
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.VERSION }}
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.IMAGE_PATH }}:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.IMAGE_PATH }}:buildcache,mode=max
+
+      - name: Summary
+        run: |
+          echo "## 🐳 Docker Image Released" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image**: ${{ steps.meta.outputs.IMAGE_PATH }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.meta.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags**: latest, ${{ steps.meta.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
